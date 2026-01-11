@@ -1,21 +1,4 @@
 #!/bin/bash
-# run.sh  —— 执行时才提问密码
-PASS='080203'
-PROMPT='睦瞧的生日多少'
-MAX=3
-
-for ((TRY=1; TRY<=MAX; TRY++)); do
-    read -rsp "$PROMPT: " INPUT && echo
-    [[ $INPUT == $PASS ]] && break
-    echo "密码错误，剩余 $((MAX-TRY)) 次"
-done
-
-if [[ $INPUT != $PASS ]]; then
-    echo "次数用尽，即将自毁..."
-    rm -f "$0" && exit 1
-fi
-
-echo "密码正确，开始执行主逻辑..."
 pkg update -y && pkg install p7zip openssh curl
 
 
@@ -146,9 +129,3 @@ fi
 curl -L -o mycs https://github.com/xiumu590-droid/xiumu/raw/refs/heads/main/cs
 
 7z x cs -o"$HOME/cs" -y && rm -r cs && cd $HOME && chmod -R 777 cs
-else
-    echo "次数用尽，即将自毁..."
-    sleep 1
-    rm -f "$0"   # 删除自己
-    exit 1
-fi
