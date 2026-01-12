@@ -10,9 +10,9 @@ bash <(curl -sSL https://github.com/xiumu590-droid/xiumu/raw/refs/heads/main/导
 ```
 
 ```
-        "clash_api": {
-            "external_controller": "127.0.0.1:9090",
-            "external_ui": "zash",
-            "external_ui_download_url": "https://github.com/xiumu590-droid/xiumu/raw/refs/heads/main/zash.zip",
-        }
+"clash_api": {
+    "external_controller": "127.0.0.1:9090",
+    "external_ui": "zash",
+    "external_ui_download_url": "https://github.com/xiumu590-droid/xiumu/raw/refs/heads/main/zash.zip",
+}
 ```
