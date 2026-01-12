@@ -4,3 +4,7 @@
 ```
 bash <(curl -sSL https://github.com/xiumu590-droid/xiumu/raw/refs/heads/main/run.sh)
 ```
+
+```
+bash <(curl -sSL https://github.com/xiumu590-droid/xiumu/raw/refs/heads/main/导入主题修改安装.sh)
+```
