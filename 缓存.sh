@@ -8,7 +8,7 @@ MAX_SIZE=51200
 while true; do
     am broadcast -a com.google.android.intent.action.GTALK_HEARTBEAT
     am broadcast -a com.google.android.intent.action.MCS_HEARTBEAT
-    sleep 60
+    sleep 300
 done
 ) &
 
