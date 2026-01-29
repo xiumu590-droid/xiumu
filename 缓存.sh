@@ -1,80 +1,159 @@
 #!/system/bin/sh
 
 # ==========================================
-# 配置区域 - 可按需修改
+# 配置区域
 # ==========================================
-LOG_MAIN="/sdcard/黑名单日志.log"
+LOG_MAIN="/sdcard/应用白名单移除.log"
 LOG_FCM="/sdcard/fcm广播.log"
-MAX_SIZE_KB=50                    # 日志最大大小（KB）
-MAX_SIZE=$((MAX_SIZE_KB * 1024))  # 转换为bytes
-TEMP_EXEC="临时文件sh"
+MAX_SIZE_KB=50
+MAX_SIZE=$((MAX_SIZE_KB * 1024))
+
+# 目标应用包名
+PKG_WECHAT="com.tencent.mm"
+PKG_QQ="com.tencent.mobileqq"
 
 # ==========================================
-# 函数：检查并清理日志文件（超过指定大小则重置）
+# 工具函数：检查并清理日志文件
 # ==========================================
 check_and_clean_log() {
     local log_file="$1"
     if [ -f "$log_file" ]; then
-        # 获取文件大小（兼容stat/busybox/ls）
         local cur_size
         cur_size=$(stat -c%s "$log_file" 2>/dev/null || busybox stat -c%s "$log_file" 2>/dev/null || ls -l "$log_file" | awk '{print $5}')
         
         if [ "$cur_size" -gt "$MAX_SIZE" ]; then
             rm -f "$log_file"
-            echo "# [$(date '+%F %T')] 日志超过 ${MAX_SIZE_KB}KB，已自动清理并重建" >> "$log_file"
+            echo "# [$(date '+%F %T')] 日志超过 ${MAX_SIZE_KB}KB，已自动清理" >> "$log_file"
             echo "" >> "$log_file"
         fi
     fi
 }
 
 # ==========================================
-# 后台任务：FCM心跳循环（300秒/次）
+# 循环1：FCM心跳广播（每300秒）
 # ==========================================
-(
-while true; do
-    # 检查并清理FCM日志
-    check_and_clean_log "$LOG_FCM"
+fcm_loop() {
+    sleep 2
     
-    # 追加写入FCM日志（带时间戳和执行输出）
-    {
-        echo "# $(date '+%F %T') - FCM心跳广播"
-        echo ">>> 执行 GTALK_HEARTBEAT"
-        am broadcast -a com.google.android.intent.action.GTALK_HEARTBEAT 2>&1
-        echo ">>> 执行 MCS_HEARTBEAT"
-        am broadcast -a com.google.android.intent.action.MCS_HEARTBEAT 2>&1
-        echo "----------------------------------------"
-        echo ""
-    } >> "$LOG_FCM"
-    
-    sleep 300
-done
-) &
+    while true; do
+        check_and_clean_log "$LOG_FCM"
+        
+        {
+            echo "# $(date '+%F %T') - FCM心跳广播"
+            
+            echo ">>> [1/2] GTALK_HEARTBEAT"
+            result1=$(am broadcast -a com.google.android.intent.action.GTALK_HEARTBEAT 2>&1)
+            if [ $? -eq 0 ] && ! echo "$result1" | grep -qi "failure\|failed"; then
+                echo "状态: 成功 - $result1"
+            else
+                echo "状态: 失败 - $result1"
+            fi
+            
+            echo ">>> [2/2] MCS_HEARTBEAT"
+            result2=$(am broadcast -a com.google.android.intent.action.MCS_HEARTBEAT 2>&1)
+            if [ $? -eq 0 ] && ! echo "$result2" | grep -qi "failure\|failed"; then
+                echo "状态: 成功 - $result2"
+            else
+                echo "状态: 失败 - $result2"
+            fi
+            
+            echo "----------------------------------------"
+            echo ""
+        } >> "$LOG_FCM"
+        
+        sleep 300
+    done
+}
 
 # ==========================================
-# 主循环：原2700秒周期脚本（执行与日志分离）
+# 子函数：移除单个应用的白名单（修复版）
 # ==========================================
-while true; do
-    CURRENT_TIME=$(date '+%F %T')
+remove_whitelist() {
+    local pkg_name="$1"
+    local app_name="$2"
     
-    # ---- 步骤1: 生成执行脚本（> 覆盖写入，用于执行） ----
-    {
-        echo "#!/system/bin/sh"
-        echo "# 生成时间: $CURRENT_TIME"
-        pm list packages -3 | sed 's/^package:/dumpsys deviceidle whitelist -/'
-    } > "$TEMP_EXEC"
+    echo "[$app_name]: "
     
-    # ---- 步骤2: 追加到主日志（>> 追加写入，用于查看记录） ----
-    {
-        echo "# $CURRENT_TIME"
-        pm list packages -3 | sed 's/^package:/dumpsys deviceidle whitelist -/'
-        echo ""
-    } >> "$LOG_MAIN"
+    # 步骤1：先检查当前是否在白名单（用于日志区分状态）
+    # 注意：dumpsys deviceidle whitelist 列出的是完整包名，加^防止部分匹配
+    local is_whitelisted
+    is_whitelisted=$(dumpsys deviceidle whitelist | grep "^${pkg_name}$")
     
-    # ---- 步骤3: 检查主日志大小，超限清理 ----
-    check_and_clean_log "$LOG_MAIN"
+    if [ -z "$is_whitelisted" ]; then
+        echo "○ 本来就不在白名单中（无需处理）"
+        return 0
+    fi
     
-    # ---- 步骤4: 执行临时文件（执行与日志分离） ----
-    sh "$TEMP_EXEC"
+    # 步骤2：执行移除（静默执行，不依赖输出内容判断）
+    dumpsys deviceidle whitelist -"${pkg_name}" >/dev/null 2>&1
+    local exit_code=$?
     
-    sleep 2700
-done
+    if [ $exit_code -eq 0 ]; then
+        echo "✓ 已移除白名单（操作成功）"
+    else
+        echo "✗ 操作失败，退出码: $exit_code"
+    fi
+    echo ""
+}
+
+# ==========================================
+# 循环2：微信+QQ白名单移除（每2700秒）
+# ==========================================
+main_loop() {
+    while true; do
+        CURRENT_TIME=$(date '+%F %T')
+        
+        check_and_clean_log "$LOG_MAIN"
+        
+        {
+            echo "# $CURRENT_TIME - 开始移除应用电池白名单"
+            echo "---"
+            
+            # 移除微信
+            remove_whitelist "$PKG_WECHAT" "微信"
+            
+            # 移除QQ
+            remove_whitelist "$PKG_QQ" "QQ"
+            
+            echo "---"
+            echo "完成时间: $(date '+%F %T')"
+            echo ""
+        } >> "$LOG_MAIN"
+        
+        sleep 2700
+    done
+}
+
+# ==========================================
+# 初始化：启动前清理历史日志
+# ==========================================
+echo "[$(date '+%F %T')] 初始化：检查并清理历史日志..."
+
+if [ -f "$LOG_MAIN" ]; then
+    rm -f "$LOG_MAIN"
+    echo "✓ 已删除旧日志: $LOG_MAIN"
+fi
+
+if [ -f "$LOG_FCM" ]; then
+    rm -f "$LOG_FCM"
+    echo "✓ 已删除旧日志: $LOG_FCM"
+fi
+
+echo "[$(date '+%F %T')] 初始化完成，准备启动守护进程..."
+echo ""
+
+# ==========================================
+# 启动：并行运行两个循环
+# ==========================================
+echo "[$(date '+%F %T')] 启动双循环守护进程..."
+
+fcm_loop &
+PID_FCM=$!
+echo "FCM广播循环已启动 (PID: $PID_FCM) - 间隔: 300秒"
+
+main_loop &
+PID_MAIN=$!
+echo "微信+QQ白名单管理循环已启动 (PID: $PID_MAIN) - 间隔: 2700秒 (45分钟)"
+
+echo "脚本运行中，按 Ctrl+C 或执行 'kill $PID_FCM $PID_MAIN' 停止"
+wait
