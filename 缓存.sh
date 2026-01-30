@@ -74,17 +74,6 @@ remove_whitelist() {
     
     echo "[$app_name]: "
     
-    # 步骤1：先检查当前是否在白名单（用于日志区分状态）
-    # 注意：dumpsys deviceidle whitelist 列出的是完整包名，加^防止部分匹配
-    local is_whitelisted
-    is_whitelisted=$(dumpsys deviceidle whitelist | grep "^${pkg_name}$")
-    
-    if [ -z "$is_whitelisted" ]; then
-        echo "○ 本来就不在白名单中（无需处理）"
-        return 0
-    fi
-    
-    # 步骤2：执行移除（静默执行，不依赖输出内容判断）
     dumpsys deviceidle whitelist -"${pkg_name}" >/dev/null 2>&1
     local exit_code=$?
     
